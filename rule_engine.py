@@ -13,6 +13,7 @@ import time
 from collections import deque, defaultdict
 from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import unquote
 
 import config
 
@@ -123,8 +124,13 @@ def check_web_log(log_line: str) -> Detection:
     ip_match = _IP_PATTERN.search(log_line)
     src_ip = ip_match.group(0) if ip_match else "unknown"
 
+    # URL 인코딩을 우회 수단으로 쓰는 경우(예: UNION%20SELECT)를 잡기 위해
+    # 원본과 별개로 디코딩된 버전도 함께 패턴 매칭에 사용한다.
+    # 원본 로그(log_line)는 reason/저장용으로 그대로 유지한다.
+    decoded_line = unquote(log_line)
+
     for pat in _SQLI_PATTERNS:
-        if pat.search(log_line):
+        if pat.search(log_line) or pat.search(decoded_line):
             return Detection(
                 True, "SQLi", "confirmed",
                 f"SQLi 시그니처 매칭: {pat.pattern}",
@@ -132,7 +138,7 @@ def check_web_log(log_line: str) -> Detection:
             )
 
     for pat in _XSS_PATTERNS:
-        if pat.search(log_line):
+        if pat.search(log_line) or pat.search(decoded_line):
             return Detection(
                 True, "XSS", "confirmed",
                 f"XSS 시그니처 매칭: {pat.pattern}",
